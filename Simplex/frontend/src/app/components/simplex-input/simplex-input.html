@@ -1,1 +1,77 @@
-<p>simplex-input works!</p>
+<div class="simplex-card">
+  <div class="card-header">
+    <h2>Simplex Problem Setup</h2>
+  </div>
+
+  <form [formGroup]="problemForm" (ngSubmit)="onSubmit()">
+    <div class="setup-row">
+      <div class="input-group">
+        <label>Goal</label>
+        <select formControlName="objectiveType" class="ui-input">
+          <option value="Maximize">Maximize</option>
+          <option value="Minimize">Minimize</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label>Decision Variables (N)</label>
+        <input type="number" formControlName="numVariables" min="1" class="ui-input">
+      </div>
+      <div class="input-group">
+        <label>Constraints (M)</label>
+        <input type="number" formControlName="numConstraints" min="1" class="ui-input">
+      </div>
+      <button type="button" class="btn-secondary" (click)="generateGrid()">Generate Grid</button>
+    </div>
+
+    <div class="matrix-section" *ngIf="gridGenerated">
+
+      <div class="matrix-header">Objective Function (Z)</div>
+      <div class="equation-row z-row" formArrayName="objectiveCoefficients">
+        <span class="z-label">Z = </span>
+        <ng-container *ngFor="let ctrl of objectiveCoefficients.controls; let i=index">
+          <input type="number" [formControlName]="i" class="ui-input grid-input">
+          <span class="var-label">x<sub>{{ i + 1 }}</sub></span>
+          <span *ngIf="i < objectiveCoefficients.length - 1" class="plus-sign">+</span>
+        </ng-container>
+      </div>
+
+      <div class="matrix-header">Constraints (Subject To)</div>
+      <div class="constraints-matrix" formArrayName="constraints">
+        <div class="equation-row" *ngFor="let cons of constraints.controls; let i=index" [formGroupName]="i">
+
+          <ng-container formArrayName="coefficients">
+            <ng-container *ngFor="let coef of getCoefficients(i).controls; let j=index">
+              <input type="number" [formControlName]="j" class="ui-input grid-input">
+              <span class="var-label">x<sub>{{ j + 1 }}</sub></span>
+              <span *ngIf="j < getCoefficients(i).length - 1" class="plus-sign">+</span>
+            </ng-container>
+          </ng-container>
+
+          <select formControlName="type" class="ui-input sign-select">
+            <option value="<=">&le;</option>
+            <option value=">=">&ge;</option>
+            <option value="=">=</option>
+          </select>
+          <input type="number" formControlName="rhs" class="ui-input grid-input rhs-input">
+        </div>
+      </div>
+
+      <div class="matrix-header">Variable Restrictions</div>
+      <div class="equation-row bounds-row" formArrayName="variableRestrictions">
+        <div class="bound-item" *ngFor="let res of variableRestrictions.controls; let i=index">
+          <span class="var-label">x<sub>{{ i + 1 }}</sub></span>
+          <select [formControlName]="i" class="ui-input bound-select">
+            <option value=">=0">&ge; 0 (Standard)</option>
+            <option value="<=0">&le; 0</option>
+            <option value="free">Unrestricted</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button type="submit" class="btn-primary" [disabled]="problemForm.invalid">Solve Simplex</button>
+      </div>
+
+    </div>
+  </form>
+</div>

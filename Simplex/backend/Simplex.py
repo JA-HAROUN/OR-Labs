@@ -78,9 +78,49 @@ class Simplex:
         self.phase_one_flag = False
         
         self.solution = Simplex_Solution.NULL
+        self.steps = []
         
         self.finished   = False
         self.unbounded  = False   # True when ratio_test finds no positive pivot element
+
+    def _objective_value(self):
+        if np.isscalar(self.output):
+            return float(self.output)
+        output_array = np.asarray(self.output, dtype=float).reshape(-1)
+        return float(output_array[0]) if output_array.size else 0.0
+
+    def _decision_variables_solution(self):
+        solution = {name: 0.0 for name in self.variables[:self.num_of_variables]}
+        for row_index, basic_var in enumerate(self.basic_vars):
+            if basic_var in solution:
+                solution[basic_var] = float(self.RHS[row_index])
+        return solution
+
+    def _capture_step(self, phase, iteration, event, entering_var=None, leaving_var=None, pivot_position=None, pivot_value=None):
+        pivot = None
+        if pivot_position is not None:
+            pivot = {
+                "row": int(pivot_position[0]),
+                "column": int(pivot_position[1]),
+                "value": float(pivot_value) if pivot_value is not None else float(self.constraints_vars_coeffs[pivot_position[0]][pivot_position[1]]),
+            }
+
+        self.steps.append({
+            "phase": phase,
+            "iteration": int(iteration),
+            "event": event,
+            "entering_variable": entering_var,
+            "leaving_variable": leaving_var,
+            "pivot": pivot,
+            "basic_variables": list(self.basic_vars),
+            "tableau": {
+                "constraints": [[float(value) for value in row] for row in self.constraints_vars_coeffs.tolist()],
+                "rhs": [float(value) for value in self.RHS.tolist()],
+                "objective_coefficients": [float(value) for value in self.obj_func_coeffs.tolist()],
+                "objective_value": self._objective_value(),
+            },
+            "current_solution": self._decision_variables_solution(),
+        })
     
     
     # Behaviours
@@ -239,6 +279,7 @@ class Simplex:
         self.goal = new_goal
 
         self.obj_func_coeffs = -self.obj_func_coeffs
+        self._capture_step("phase_1", 0, "start")
 
         # make rows in objective under the artificial variables zero
         for i in range(self.num_of_constraints):
@@ -266,17 +307,29 @@ class Simplex:
             # capture names before swapping
             entering_var_name = self.variables[entering_var_index]
             leaving_var_row   = self.ratio_test(entering_var_index)
-            leaving_var_name  = self.basic_vars[leaving_var_row]
 
             # if ratio_test found no positive element → unbounded (no leaving var)
             if leaving_var_row == -1:
                 self.unbounded = True
+                self._capture_step("phase_1", iteration, "unbounded", entering_var=entering_var_name)
                 break
+
+            leaving_var_name  = self.basic_vars[leaving_var_row]
+            pivot_value = float(self.constraints_vars_coeffs[leaving_var_row][entering_var_index])
 
             # swap entering with leaving
             self.basic_vars[leaving_var_row] = entering_var_name
 
             self.pivoting(leaving_var_row, entering_var_index)
+            self._capture_step(
+                "phase_1",
+                iteration,
+                "pivot",
+                entering_var=entering_var_name,
+                leaving_var=leaving_var_name,
+                pivot_position=(leaving_var_row, entering_var_index),
+                pivot_value=pivot_value,
+            )
 
             # AI_GENERATED: This part is AI generated
             print(f"  ▶  Phase 1 | Iteration {iteration}")
@@ -301,6 +354,7 @@ class Simplex:
         print("  PHASE 2  —  Optimize original objective")
         print("═" * 60)
         self.print_solution(False)
+        self._capture_step("phase_2", 0, "start")
 
         iteration = 0
         while (not self.goal_achieved()):
@@ -313,17 +367,29 @@ class Simplex:
             # capture names before swapping
             entering_var_name = self.variables[entering_var_index]
             leaving_var_row   = self.ratio_test(entering_var_index)
-            leaving_var_name  = self.basic_vars[leaving_var_row]
 
             # if ratio_test found no positive element → unbounded
             if leaving_var_row == -1:
                 self.unbounded = True
+                self._capture_step("phase_2", iteration, "unbounded", entering_var=entering_var_name)
                 break
+
+            leaving_var_name  = self.basic_vars[leaving_var_row]
+            pivot_value = float(self.constraints_vars_coeffs[leaving_var_row][entering_var_index])
 
             # swap entering with leaving
             self.basic_vars[leaving_var_row] = entering_var_name
 
             self.pivoting(leaving_var_row, entering_var_index)
+            self._capture_step(
+                "phase_2",
+                iteration,
+                "pivot",
+                entering_var=entering_var_name,
+                leaving_var=leaving_var_name,
+                pivot_position=(leaving_var_row, entering_var_index),
+                pivot_value=pivot_value,
+            )
 
             # AI_GENERATED: This part is AI generated
             print(f"  ▶  Phase 2 | Iteration {iteration}")
@@ -336,6 +402,7 @@ class Simplex:
     
     # DONE: Implement the main method to run the simplex algorithm
     def run_program(self):
+        self.steps = []
         self.obj_func_coeffs = -self.obj_func_coeffs
 
         self.add_variables()
@@ -345,6 +412,7 @@ class Simplex:
         print("  INITIAL TABLEAU  —  After adding auxiliary variables")
         print("═" * 60)
         self.print_solution(False)
+        self._capture_step("setup", 0, "initial_tableau")
 
         # Check phase 1 if there are artificial variables
         if self.artificial_num >= 1:
@@ -372,6 +440,21 @@ class Simplex:
         else:
             # fallback: print whatever state we ended in
             self.print_solution(True)
+
+        self._capture_step("result", 0, "finished")
+
+    def result_payload(self):
+        return {
+            "status": self.solution.name.lower(),
+            "objective_value": self._objective_value(),
+            "solution": self._decision_variables_solution(),
+            "degenerate_pivots": int(self.degenerate_count),
+            "steps": self.steps,
+        }
+
+    def solve_with_steps(self):
+        self.run_program()
+        return self.result_payload()
     
     # DONE: Check for unboundedness and infeasibility after each phase
     def check_failure(self):
