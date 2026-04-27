@@ -38,7 +38,11 @@ export class SimplexInput {
     const vars = this.problemForm.value.numVariables;
     const cons = this.problemForm.value.numConstraints;
 
-    // 1. Clear existing arrays (in case the user changes the numbers and clicks generate again)
+    // Check if it's Maximize or Minimize to set the default constraint sign
+    const isMinimize = this.problemForm.value.objectiveType === 'Minimize';
+    const defaultSign = isMinimize ? '>=' : '<=';
+
+    // 1. Clear existing arrays
     this.objectiveCoefficients.clear();
     this.constraints.clear();
     this.variableRestrictions.clear();
@@ -46,7 +50,6 @@ export class SimplexInput {
     // 2. Build Objective Function Row
     for (let i = 0; i < vars; i++) {
       this.objectiveCoefficients.push(this.fb.control(0, Validators.required));
-      // Default all variables to Non-Negative (>=0)
       this.variableRestrictions.push(this.fb.control('>=0', Validators.required));
     }
 
@@ -54,11 +57,10 @@ export class SimplexInput {
     for (let i = 0; i < cons; i++) {
       const constraintRow = this.fb.group({
         coefficients: this.fb.array([]),
-        type: ['<=', Validators.required], // Default constraint type
+        type: [defaultSign, Validators.required], // We inject the smart default here!
         rhs: [0, Validators.required]
       });
 
-      // Add coefficients to this specific constraint row
       const coefArray = constraintRow.get('coefficients') as FormArray;
       for (let j = 0; j < vars; j++) {
         coefArray.push(this.fb.control(0, Validators.required));

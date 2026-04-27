@@ -15,6 +15,16 @@ export class AppComponent {
 
   onSolve(problemData: any) {
     console.log("Data received from input form:", problemData);
-    // We will call the API service here later!
+
+    // TEMPORARY DUMMY DATA TO TEST THE UI
+    this.finalResults = {
+      status: "Optimal Solution Found",
+      optimalValue: 12.5,
+      finalVariables: { x1: 2.5, x2: 0, s1: 0, s2: 4 },
+      steps: [
+        { iteration: 1, tableau: [[1, -3, -5, 0, 0, 0], [0, 1, 0, 1, 0, 4], [0, 0, 2, 0, 1, 12]] },
+        { iteration: 2, tableau: [[1, -3, 0, 0, 2.5, 30], [0, 1, 0, 1, 0, 4], [0, 0, 1, 0, 0.5, 6]] }
+      ]
+    };
   }
 }

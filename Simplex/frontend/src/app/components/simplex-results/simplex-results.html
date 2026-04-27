@@ -1,1 +1,56 @@
-<p>simplex-results works!</p>
+<div class="results-wrapper" *ngIf="responseData">
+
+  <div class="result-card">
+    <div class="card-header">
+      <div>
+        <h2 class="status-title">{{ responseData.status || 'Solution Found' }}</h2>
+      </div>
+      <div class="z-value">
+        Optimal Z = {{ responseData.optimalValue | number:'1.0-4' }}
+      </div>
+    </div>
+
+    <div class="variables-container">
+      <div class="var-box" *ngFor="let v of formattedVariables">
+        <span class="var-name">{{ v.key }}</span>
+        <span class="var-val">{{ v.value | number:'1.0-4' }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="result-card steps-card" *ngIf="responseData.steps && responseData.steps.length > 0">
+
+    <div class="steps-header">
+      <h3>Simulation Steps</h3>
+      <span class="step-badge">Step {{ currentStepIndex + 1 }} of {{ responseData.steps.length }}</span>
+    </div>
+
+    <div class="tableau-container" *ngIf="currentStep">
+      <table class="simplex-table">
+        <tbody>
+        <tr *ngFor="let row of currentStep.tableau; let rowIndex = index">
+          <td *ngFor="let cell of row">
+            {{ cell | number:'1.0-4' }}
+          </td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="controls-row">
+      <button class="btn-outline" (click)="prevStep()" [disabled]="currentStepIndex === 0">
+        Previous
+      </button>
+
+      <div class="progress-bar">
+        <div class="progress-fill" [style.width.%]="((currentStepIndex + 1) / responseData.steps.length) * 100"></div>
+      </div>
+
+      <button class="btn-primary" (click)="nextStep()" [disabled]="currentStepIndex === responseData.steps.length - 1">
+        Next
+      </button>
+    </div>
+
+  </div>
+
+</div>
