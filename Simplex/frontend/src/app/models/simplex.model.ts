@@ -24,5 +24,6 @@ export interface SimplexResponse {
   status: string;
   optimalValue: number;
   finalVariables: any;
+  headers: string[];
   steps: SimplexStep[];
 }
