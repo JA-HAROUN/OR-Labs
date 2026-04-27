@@ -27,13 +27,37 @@
 
     <div class="tableau-container" *ngIf="currentStep">
       <table class="simplex-table">
+
+        <thead>
+        <tr>
+          <th class="basis-col">Basis</th>
+          <th *ngFor="let header of responseData.headers; let j = index"
+              [class.rhs-header]="header === 'RHS' || header === 'Solution'"
+              [class.highlight-col]="j === currentStep.pivotCol">
+            {{ header }}
+          </th>
+        </tr>
+        </thead>
+
         <tbody>
-        <tr *ngFor="let row of currentStep.tableau; let rowIndex = index">
-          <td *ngFor="let cell of row">
+        <tr *ngFor="let row of currentStep.tableau; let i = index"
+            [class.z-row]="i === currentStep.tableau.length - 1">
+
+          <th class="basis-col" [class.highlight-row]="i === currentStep.pivotRow">
+            {{ currentStep.basicVariables[i] }}
+          </th>
+
+          <td *ngFor="let cell of row; let j = index"
+              [class.rhs-cell]="j === row.length - 1"
+              [class.highlight-row]="i === currentStep.pivotRow"
+              [class.highlight-col]="j === currentStep.pivotCol"
+              [class.highlight-pivot]="i === currentStep.pivotRow && j === currentStep.pivotCol">
             {{ cell | number:'1.0-4' }}
           </td>
+
         </tr>
         </tbody>
+
       </table>
     </div>
 
