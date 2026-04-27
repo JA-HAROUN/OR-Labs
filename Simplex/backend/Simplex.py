@@ -90,16 +90,19 @@ class Simplex:
         # TODO: Remove this later when you finish debugging
         self.console = Console()
 
-    # Done: Implement the reset_history method to clear the iteration history before running the simplex algorithm
+    # Clears previous iteration snapshots before starting a new run.
+    # Used by: run_program.
     def reset_history(self):
         self.iteration_history = {}
 
-    # DONE: Implement the update_non_basic_variables method to keep track of non-basic variables after each pivot
+    # Rebuilds the non-basic variable list from the current basis.
+    # Used by: record_history.
     def update_non_basic_variables(self):
         active_variables = self.variables[:len(self.obj_func_coeffs)]
         self.non_basic_vars = [var for var in active_variables if var not in self.basic_vars]
 
-    # DONE: Implement the record_history method to capture the state of the tableau at each iteration
+    # Saves one tableau snapshot (coefficients, RHS, basis, output).
+    # Used by: run_program and run_simplex_iterations.
     def record_history(self, leaving_var_row=None):
         self.update_non_basic_variables()
         iteration_number = len(self.iteration_history) + 1
@@ -112,7 +115,8 @@ class Simplex:
             "ratio_row": leaving_var_row,
         }
     
-    # DONE: Implement the save_result method to store the final tableau data after the simplex algorithm finishes
+    # Stores the final solver state for API/UI consumption.
+    # Used by: run_program.
     def save_result(self):
         self.last_tableau_data = {
             "solution_status": self.solution,
@@ -126,6 +130,8 @@ class Simplex:
         }
 
     # AI_GENERATED: This part is AI generated
+    # Formats numbers for readable output tables.
+    # Used by: _build_tableau_table and print_iteration_history.
     def _fmt_value(self, value):
         value = float(value)
         if value.is_integer():
@@ -133,6 +139,8 @@ class Simplex:
         return f"{value:.4g}"
 
     # AI_GENERATED: This part is AI generated
+    # Builds one Rich table for a simplex tableau (optionally with z-row).
+    # Used by: print_iteration_history.
     def _build_tableau_table(self, col_names, basic_vars, coeffs, rhs, z_coeffs=None, z_val=None, title=None):
         table = Table(title=title, show_lines=False)
         table.add_column("BV", justify="center")
@@ -151,6 +159,8 @@ class Simplex:
         return table
 
     # AI_GENERATED: This part is AI generated
+    # Prints all saved tableau snapshots after solving.
+    # Used by: run_program.
     def print_iteration_history(self):
         self.console.rule("ITERATION HISTORY")
 
@@ -194,7 +204,8 @@ class Simplex:
             5. last thing do the same for the objective function
     """
         
-    # DONE: Implement the pivoting operation
+    # Applies one pivot operation to constraints, RHS, and objective row.
+    # Used by: run_simplex_iterations.
     def pivoting(self, row_pivot, col_pivot):
         # Step 1
         pivot = self.constraints_vars_coeffs[row_pivot][col_pivot]
@@ -219,7 +230,8 @@ class Simplex:
         self.output = self.output - (self.RHS[row_pivot] * factor)
         
     
-    # DONE: Implement the ratio test to find the leaving variable
+    # Selects leaving row using the minimum positive ratio test.
+    # Used by: run_simplex_iterations.
     def ratio_test(self, column_index):
         row = -1
         min_ratio = float('inf')
@@ -243,7 +255,8 @@ class Simplex:
 
         return row
     
-    # DONE: Check if the goal is achieved or not
+    # Checks if all reduced costs satisfy optimality for current goal.
+    # Used by: run_simplex_iterations and check_failure.
     def goal_achieved(self):
         # Return True or False based on achieved or not
         # if Maximization:
@@ -263,15 +276,16 @@ class Simplex:
         return True
 
     
-    # DONE: Indices of columns that are allowed to enter the basis.
-    # In phase 2, artificial variable columns are excluded.
+    # Returns columns allowed to enter the basis.
+    # Used by: goal_achieved and choose_entering_var.
     def real_indices(self):
         if self.phase_one_flag:
             return list(range(len(self.obj_func_coeffs)))
         return [j for j, name in enumerate(self.variables[:len(self.obj_func_coeffs)])
                 if not name.startswith("a_")]
 
-    # DONE: Choose entering variable
+    # Picks entering variable index (most negative for max, most positive for min).
+    # Used by: run_simplex_iterations.
     def choose_entering_var(self):
         # Maximization -> Most Negative
         # Minimization -> Most Positive
@@ -305,7 +319,8 @@ class Simplex:
 
         return entering_var_index
 
-    # DONE: Add just one auxiliary variable (slack, surplus, or artificial) to a specific row based on the operator
+    # Adds one auxiliary column and updates metadata/basis when needed.
+    # Used by: add_variables.
     def add_auxiliary_variable(self, row_index, var_type):
         if var_type == Var_Type.SLACK:
             self.slacks_num += 1
@@ -335,7 +350,8 @@ class Simplex:
         new_column[row_index, 0] = column_value
         self.constraints_vars_coeffs = np.hstack((self.constraints_vars_coeffs, new_column))
     
-    # DONE: add slack, surplus and artificial variables when needed in the start
+    # Expands all constraints with slack/surplus/artificial variables.
+    # Used by: run_program.
     def add_variables(self):
         for i, _ in enumerate(self.constraints_vars_coeffs) :
             operator = self.operators[i]
@@ -351,7 +367,8 @@ class Simplex:
             else :
                 raise ValueError(f"Unsupported operator: {operator}")
 
-    # DONE: Canonicalize objective row with respect to the current basis
+    # Eliminates basic-variable coefficients from the objective row.
+    # Used by: run_phase_one.
     def canonicalize_objective(self):
         for i, basic_var in enumerate(self.basic_vars):
             if basic_var not in self.variables[:len(self.obj_func_coeffs)]:
@@ -370,7 +387,8 @@ class Simplex:
             self.obj_func_coeffs = self.obj_func_coeffs - factor * self.constraints_vars_coeffs[i]
             self.output = self.output - factor * self.RHS[i]
 
-    # DONE: Implement the main loop of the simplex algorithm to run iterations until the goal is achieved
+    # Main simplex loop for one phase: enter, leave, pivot, record.
+    # Used by: run_phase_one and run_phase_two.
     def run_simplex_iterations(self, phase_label):
         iteration = 0
         while (not self.goal_achieved()):
@@ -421,7 +439,8 @@ class Simplex:
     """
 
     
-    # DONE: Implement the first phase of the two-phase method
+    # Phase 1: build and solve auxiliary objective to test feasibility.
+    # Used by: run_program when artificial variables exist.
     def run_phase_one(self):
 
         self.phase_one_flag = True
@@ -457,6 +476,8 @@ class Simplex:
         # Eliminate them with standard row operations.
         self.canonicalize_objective()
         
+    # Phase 2: optimize original objective using the feasible basis.
+    # Used by: run_program.
     def run_phase_two(self):
         # NOTE: in phase two we just ignore the artificial variables and never let them enter the basis again
 
@@ -466,7 +487,8 @@ class Simplex:
         self.check_failure()
         
     
-    # DONE: Implement the main method to run the simplex algorithm
+    # Orchestrates full solve flow: setup, phase 1/2, history, final result.
+    # Used by: callers (tests/API endpoints).
     def run_program(self):
         self.obj_func_coeffs = -self.obj_func_coeffs
         self.reset_history()
@@ -488,7 +510,8 @@ class Simplex:
         
         self.save_result()
     
-    # DONE: Check for unboundedness and infeasibility after each phase
+    # Sets final status (unfeasible, unbounded, or optimal).
+    # Used by: run_phase_one and run_phase_two.
     def check_failure(self):
         # Phase 1 is infeasible if a basic artificial variable stays positive.
         if self.phase_one_flag:
@@ -509,6 +532,8 @@ class Simplex:
         if self.finished or self.goal_achieved():
             self.solution = Simplex_Solution.OPTIMAL
         
+    # Counts degenerate pivots (when any basic RHS becomes zero).
+    # Used by: run_simplex_iterations.
     def check_degeneracy(self):
         # A solution is degenerate if at least one basic variable is zero.
         self.degenerate_count += 1
