@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from Simplex import Optimization_Type, Simplex
+from Simplex import Optimization_Type, Simplex, Var_Constraints
 
 app = Flask(__name__)
 CORS(app)
@@ -20,10 +20,21 @@ def _parse_goal(goal_text: str) -> Optimization_Type:
     return Optimization_Type.NULL
 
 
-def _validate_variable_restrictions(restrictions):
-    if not restrictions:
-        return True
-    return all(str(r).strip() == ">=0" for r in restrictions)
+
+def parse_var_constraints(raw_constraints)-> Var_Constraints:
+        result = []
+
+        for c in raw_constraints:
+            if c == ">=0":
+                result.append(Var_Constraints.NON_NEGATIVE)
+
+            elif c == "free":
+                result.append(Var_Constraints.UNRESTRICTED)
+
+            else:
+                raise ValueError(f"Unknown variable restriction: {c}")
+
+        return result
 
 
 @app.route("/api/solve", methods=["POST"])
@@ -34,14 +45,12 @@ def solve_simplex():
     if goal == Optimization_Type.NULL:
         return jsonify({"error": "Invalid objectiveType"}), 400
 
-    if not _validate_variable_restrictions(data.get("variableRestrictions")):
-        return jsonify({"error": "Only >=0 variable restrictions are supported"}), 400
-
     constraints = data.get("constraints", [])
     obj_coeffs = data.get("objectiveCoefficients", [])
     constraints_vars = [c.get("coefficients", []) for c in constraints]
     rhs = [c.get("rhs", 0) for c in constraints]
     operators = [c.get("type", "") for c in constraints]
+    var_constraints = parse_var_constraints(data.get("variableRestrictions", []))
 
     simplex = Simplex(
         goal=goal,
@@ -49,6 +58,7 @@ def solve_simplex():
         constraints_vars_coeffs=constraints_vars,
         RHS=rhs,
         operators=operators,
+        var_constraints=var_constraints
     )
 
     simplex.run_program()

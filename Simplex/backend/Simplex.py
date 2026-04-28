@@ -44,7 +44,7 @@ class Simplex_Solution(Enum):
 
 class Simplex:
     
-    def __init__(self, goal=Optimization_Type.NULL, obj_func_coeffs=(), constraints_vars_coeffs=(), RHS=(), operators=()):
+    def __init__(self, goal=Optimization_Type.NULL, obj_func_coeffs=(), constraints_vars_coeffs=(), RHS=(), operators=(),var_constraints=None):
         obj_func_coeffs = np.asarray(obj_func_coeffs, dtype=float)
         constraints_vars_coeffs = np.asarray(constraints_vars_coeffs, dtype=float)
         RHS = np.asarray(RHS, dtype=float)
@@ -58,6 +58,13 @@ class Simplex:
         # States
         self.num_of_constraints = constraints_vars_coeffs.shape[0]
         self.num_of_variables = constraints_vars_coeffs.shape[1]
+        
+        if var_constraints is None:
+            self.var_constraints = [Var_Constraints.NON_NEGATIVE] * self.num_of_variables
+        else:
+            if len(var_constraints) != self.num_of_variables:
+                raise ValueError("var_constraints must match number of variables")
+            self.var_constraints = list(var_constraints)
         
         self.goal = goal
         
@@ -397,6 +404,49 @@ class Simplex:
                 self.add_auxiliary_variable(i, Var_Type.ARTIFICIAL)
             else :
                 raise ValueError(f"Unsupported operator: {operator}")
+            
+    def handle_free_variables(self):
+        new_obj = []
+        new_constraints = []
+
+        # Initialize new constraints matrix
+        for _ in range(self.num_of_constraints):
+            new_constraints.append([])
+
+        new_variables = []
+
+        for j in range(self.num_of_variables):
+            if self.var_constraints[j] == Var_Constraints.UNRESTRICTED:
+                # Replace x_j = u_j - v_j
+
+                # Objective function
+                new_obj.append(self.obj_func_coeffs[j])   # u_j
+                new_obj.append(-self.obj_func_coeffs[j])  # v_j
+
+                # Constraints
+                for i in range(self.num_of_constraints):
+                    coeff = self.constraints_vars_coeffs[i][j]
+                    new_constraints[i].append(coeff)    # u_j
+                    new_constraints[i].append(-coeff)   # v_j
+
+                # Variable names
+                new_variables.append(f"u_{j+1}")
+                new_variables.append(f"v_{j+1}")
+
+            else:
+                # Keep as is
+                new_obj.append(self.obj_func_coeffs[j])
+
+                for i in range(self.num_of_constraints):
+                    new_constraints[i].append(self.constraints_vars_coeffs[i][j])
+
+                new_variables.append(f"x_{j+1}")
+
+        # Convert back to numpy
+        self.obj_func_coeffs = np.array(new_obj, dtype=float)
+        self.constraints_vars_coeffs = np.array(new_constraints, dtype=float)
+        self.variables = new_variables
+        self.num_of_variables = len(new_variables)
 
     # Eliminates basic-variable coefficients from the objective row.
     def canonicalize_objective(self):
@@ -526,6 +576,7 @@ class Simplex:
         self.obj_func_coeffs = -self.obj_func_coeffs
         self.reset_history()
 
+        self.handle_free_variables()
         self.add_variables()
         self.record_step(iteration=0, stage="initial")
         self.record_history()
