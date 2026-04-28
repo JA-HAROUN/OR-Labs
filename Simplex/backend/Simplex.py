@@ -81,10 +81,6 @@ class Simplex:
         self.solution = Simplex_Solution.NULL
         
         self.finished   = False
-        self.unbounded  = False   # True when ratio_test finds no positive pivot element
-        
-        self.steps = []
-        self.iteration = 0
         self.unbounded  = False
         
         self.iteration_history = {}
@@ -207,55 +203,6 @@ class Simplex:
                 NOTE: include the RHS in it
             5. last thing do the same for the objective function
     """
-
-    def _snapshot_tableau(self):
-        tableau = []
-        for i in range(self.num_of_constraints):
-            row = self.constraints_vars_coeffs[i].tolist()
-            row.append(float(self.RHS[i]))
-            tableau.append(row)
-        z_val = float(self.output[0]) if hasattr(self.output, "__len__") else float(self.output)
-        z_row = self.obj_func_coeffs.tolist()
-        z_row.append(z_val)
-        tableau.append(z_row)
-        return tableau
-
-    def record_step(self, pivot_row=None, pivot_col=None, iteration=None, stage="after", entering_var=None, leaving_var=None, entering_reason=None, leaving_reason=None):
-        if iteration is None:
-            self.iteration += 1
-            iteration = self.iteration
-
-        self.steps.append({
-            "iteration": iteration,
-            "tableau": self._snapshot_tableau(),
-            "basicVariables": self.basic_vars + ["z"],
-            "pivotRow": pivot_row,
-            "pivotCol": pivot_col,
-            "stage": stage,
-            "enteringVar": entering_var,
-            "leavingVar": leaving_var,
-            "enteringReason": entering_reason,
-            "leavingReason": leaving_reason,
-        })
-
-    def build_response(self):
-        headers = self.variables[:len(self.obj_func_coeffs)] + ["RHS"]
-        final_vars = {name: 0.0 for name in headers[:-1]}
-
-        for i, bv in enumerate(self.basic_vars):
-            if bv in final_vars:
-                final_vars[bv] = float(self.RHS[i])
-
-        z_val = float(self.output[0]) if hasattr(self.output, "__len__") else float(self.output)
-        return {
-            "status": self.solution.name if isinstance(self.solution, Simplex_Solution) else str(self.solution),
-            "optimalValue": z_val,
-            "finalVariables": final_vars,
-            "headers": headers,
-            "steps": self.steps,
-        }
-
-    # DONE: Implement the pivoting operation
         
     # Applies one pivot operation to constraints, RHS, and objective row.
     # Used by: run_simplex_iterations.
@@ -307,28 +254,6 @@ class Simplex:
                     
 
         return row
-
-    def ratio_test_details(self, column_index):
-        row = -1
-        min_ratio = float('inf')
-        degenerate = False
-        ratios = []
-
-        for i, rhs_value in enumerate(self.RHS):
-            divisor = self.constraints_vars_coeffs[i][column_index]
-
-            if divisor > 0:
-                current_ratio = rhs_value / divisor
-                ratios.append((i, current_ratio))
-
-                if current_ratio < min_ratio:
-                    min_ratio = current_ratio
-                    row = i
-                    degenerate = False
-                elif current_ratio == min_ratio:
-                    degenerate = True
-
-        return row, min_ratio, degenerate, ratios
     
     # Checks if all reduced costs satisfy optimality for current goal.
     # Used by: run_simplex_iterations and check_failure.
@@ -368,24 +293,6 @@ class Simplex:
         # NOTE: artificial columns are never entered in phase 2
 
         entering_var_index = -1
-
-        coeffs = self.obj_func_coeffs.copy()
-        if not self.phase_one_flag and self.artificial_num > 0:
-            for i, name in enumerate(self.variables[:len(coeffs)]):
-                if name.startswith("a_"):
-                    coeffs[i] = 0.0
-        
-        if (self.goal == Optimization_Type.MAXIMIZATION):
-            negative_indices = np.where(coeffs < 0)[0]
-            if negative_indices.size > 0:
-                entering_var_index = int(negative_indices[np.argmin(coeffs[negative_indices])])
-            else:
-                self.finished = True
-
-        elif (self.goal == Optimization_Type.MINIMIZATION):
-            positive_indices = np.where(coeffs > 0)[0]
-            if positive_indices.size > 0:
-                entering_var_index = int(positive_indices[np.argmax(coeffs[positive_indices])])
         indices = self.real_indices()
 
         if self.goal == Optimization_Type.MAXIMIZATION:
@@ -467,11 +374,6 @@ class Simplex:
             if basic_var not in self.variables[:len(self.obj_func_coeffs)]:
                 continue
 
-        artificial_indices = [i for i, name in enumerate(self.variables) if name.startswith("a_")]
-        new_objective_coeffs = np.zeros(len(self.variables), dtype=float)
-        for idx in artificial_indices:
-            new_objective_coeffs[idx] = 1.0
-        new_goal = Optimization_Type.MINIMIZATION
             col_index = self.variables.index(basic_var)
             pivot_coeff = self.constraints_vars_coeffs[i][col_index]
             if abs(pivot_coeff) <= 1e-12:
@@ -485,21 +387,6 @@ class Simplex:
             self.obj_func_coeffs = self.obj_func_coeffs - factor * self.constraints_vars_coeffs[i]
             self.output = self.output - factor * self.RHS[i]
 
-        # make rows in objective under the artificial variables zero
-        for i in range(self.num_of_constraints):
-            if self.basic_vars[i].startswith("a_"):
-                # as down is zero and up is 1 then add the row to the objective function
-                self.obj_func_coeffs = self.obj_func_coeffs + self.constraints_vars_coeffs[i]
-                self.output = self.output + self.RHS[i]
-
-        # AI_GENERATED: This part is AI generated
-        print("\n" + "═" * 60)
-        print("  PHASE 1  —  Minimize artificial variables  (W → 0)")
-        print("═" * 60)
-        self.print_solution(False)
-        self.record_step(stage="initial")
-
-        # AI_GENERATED: This part is AI generated
     # Main simplex loop for one phase: enter, leave, pivot, record.
     # Used by: run_phase_one and run_phase_two.
     def run_simplex_iterations(self, phase_label):
@@ -511,13 +398,8 @@ class Simplex:
             if self.finished:
                 break
 
+            # capture names before swapping
             entering_var_name = self.variables[entering_var_index]
-            entering_value = self.obj_func_coeffs[entering_var_index]
-            entering_reason = f"Most positive reduced cost ({entering_value:.4g})" if self.goal == Optimization_Type.MINIMIZATION else f"Most negative reduced cost ({entering_value:.4g})"
-
-            leaving_var_row, min_ratio, degenerate, ratios = self.ratio_test_details(entering_var_index)
-            leaving_var_name = self.basic_vars[leaving_var_row] if leaving_var_row != -1 else ""
-
             leaving_var_row = self.ratio_test(entering_var_index)
 
             # if ratio_test found no positive element -> unbounded
@@ -526,28 +408,12 @@ class Simplex:
                 self.record_history(leaving_var_row)
                 break
 
-            ratio_parts = [f"R{i + 1}: {r:.4g}" for i, r in ratios]
-            ratio_text = ", ".join(ratio_parts) if ratio_parts else "No positive ratios"
-            leaving_reason = f"Minimum ratio test → {ratio_text}; min = {min_ratio:.4g}"
-            if degenerate:
-                leaving_reason += " (tie/degenerate)"
-
-            self.record_step(
-                pivot_row=leaving_var_row,
-                pivot_col=entering_var_index,
-                stage="before",
-                entering_var=entering_var_name,
-                leaving_var=leaving_var_name,
-                entering_reason=entering_reason,
-                leaving_reason=leaving_reason,
-            )
             leaving_var_name = self.basic_vars[leaving_var_row]
 
             # swap entering with leaving
             self.basic_vars[leaving_var_row] = entering_var_name
 
             self.pivoting(leaving_var_row, entering_var_index)
-            self.record_step(stage="after")
 
             # Check for degeneracy
             self.check_degeneracy()
@@ -615,63 +481,6 @@ class Simplex:
     def run_phase_two(self):
         # NOTE: in phase two we just ignore the artificial variables and never let them enter the basis again
 
-        # AI_GENERATED: This part is AI generated
-        print("\n" + "═" * 60)
-        print("  PHASE 2  —  Optimize original objective")
-        print("═" * 60)
-        self.print_solution(False)
-        self.record_step(stage="initial")
-
-        iteration = 0
-        while (not self.goal_achieved()):
-            iteration += 1
-            entering_var_index = self.choose_entering_var()
-            
-            if self.finished:
-                break
-
-            entering_var_name = self.variables[entering_var_index]
-            entering_value = self.obj_func_coeffs[entering_var_index]
-            entering_reason = f"Most positive reduced cost ({entering_value:.4g})" if self.goal == Optimization_Type.MINIMIZATION else f"Most negative reduced cost ({entering_value:.4g})"
-
-            leaving_var_row, min_ratio, degenerate, ratios = self.ratio_test_details(entering_var_index)
-            leaving_var_name = self.basic_vars[leaving_var_row] if leaving_var_row != -1 else ""
-
-            if leaving_var_row == -1:
-                self.unbounded = True
-                break
-
-            ratio_parts = [f"R{i + 1}: {r:.4g}" for i, r in ratios]
-            ratio_text = ", ".join(ratio_parts) if ratio_parts else "No positive ratios"
-            leaving_reason = f"Minimum ratio test → {ratio_text}; min = {min_ratio:.4g}"
-            if degenerate:
-                leaving_reason += " (tie/degenerate)"
-
-            self.record_step(
-                pivot_row=leaving_var_row,
-                pivot_col=entering_var_index,
-                stage="before",
-                entering_var=entering_var_name,
-                leaving_var=leaving_var_name,
-                entering_reason=entering_reason,
-                leaving_reason=leaving_reason,
-            )
-
-            # swap entering with leaving
-            self.basic_vars[leaving_var_row] = entering_var_name
-
-            self.pivoting(leaving_var_row, entering_var_index)
-            self.record_step(stage="after")
-
-            # AI_GENERATED: This part is AI generated
-            print(f"  ▶  Phase 2 | Iteration {iteration}")
-            print(f"     Entering : {entering_var_name}   →   Leaving : {leaving_var_name}")
-            self.print_solution(False)  
-            
-        # Check the result of phase two
-        self.check_failure()
-
-    # DONE: Implement the main method to run the simplex algorithm
         self.run_simplex_iterations("Phase 2")
             
         # Check the result of phase two
@@ -685,13 +494,6 @@ class Simplex:
         self.reset_history()
 
         self.add_variables()
-        self.record_step(iteration=0, stage="initial")
-
-        # AI_GENERATED: This part is AI generated
-        print("\n" + "═" * 60)
-        print("  INITIAL TABLEAU  —  After adding auxiliary variables")
-        print("═" * 60)
-        self.print_solution(False)
         self.record_history()
 
         # Check phase 1 if there are artificial variables
