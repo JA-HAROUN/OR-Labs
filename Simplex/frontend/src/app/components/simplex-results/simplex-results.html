@@ -16,6 +16,22 @@
         <span class="var-val">{{ v.value | number:'1.0-4' }}</span>
       </div>
     </div>
+
+    <div class="summary-grid" *ngIf="finalStep">
+      <div class="summary-item" *ngIf="basicFinalVariables.length">
+        <div class="summary-title">Basic variables</div>
+        <div class="summary-values">
+          <span *ngFor="let bv of basicFinalVariables">{{ bv.name }} = {{ bv.value | number:'1.0-4' }}</span>
+        </div>
+      </div>
+
+      <div class="summary-item" *ngIf="bindingConstraints.length">
+        <div class="summary-title">Binding constraints</div>
+        <div class="summary-values">
+          <span *ngFor="let bc of bindingConstraints">{{ bc.label }} ({{ bc.slack }} = 0)</span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="result-card steps-card" *ngIf="responseData.steps && responseData.steps.length > 0">
@@ -23,6 +39,16 @@
     <div class="steps-header">
       <h3>Simulation Steps</h3>
       <span class="step-badge">Step {{ currentStepIndex + 1 }} of {{ responseData.steps.length }}</span>
+    </div>
+
+    <div class="pivot-preview" *ngIf="showPivotHighlight && enteringVar && leavingVar">
+      <span>Entering: <strong>{{ enteringVar }}</strong></span>
+      <span>Leaving: <strong>{{ leavingVar }}</strong></span>
+    </div>
+
+    <div class="pivot-reason" *ngIf="showPivotHighlight && (enteringReason || leavingReason)">
+      <div *ngIf="enteringReason"><strong>Entering rule:</strong> {{ enteringReason }}</div>
+      <div *ngIf="leavingReason"><strong>Leaving rule:</strong> {{ leavingReason }}</div>
     </div>
 
     <div class="tableau-container" *ngIf="currentStep">
@@ -33,7 +59,7 @@
           <th class="basis-col">Basis</th>
           <th *ngFor="let header of responseData.headers; let j = index"
               [class.rhs-header]="header === 'RHS' || header === 'Solution'"
-              [class.highlight-col]="j === currentStep.pivotCol">
+              [class.highlight-col]="showPivotHighlight && j === currentStep.pivotCol">
             {{ header }}
           </th>
         </tr>
@@ -43,15 +69,15 @@
         <tr *ngFor="let row of currentStep.tableau; let i = index"
             [class.z-row]="i === currentStep.tableau.length - 1">
 
-          <th class="basis-col" [class.highlight-row]="i === currentStep.pivotRow">
+          <th class="basis-col" [class.highlight-row]="showPivotHighlight && i === currentStep.pivotRow">
             {{ currentStep.basicVariables[i] }}
           </th>
 
           <td *ngFor="let cell of row; let j = index"
               [class.rhs-cell]="j === row.length - 1"
-              [class.highlight-row]="i === currentStep.pivotRow"
-              [class.highlight-col]="j === currentStep.pivotCol"
-              [class.highlight-pivot]="i === currentStep.pivotRow && j === currentStep.pivotCol">
+              [class.highlight-row]="showPivotHighlight && i === currentStep.pivotRow"
+              [class.highlight-col]="showPivotHighlight && j === currentStep.pivotCol"
+              [class.highlight-pivot]="showPivotHighlight && i === currentStep.pivotRow && j === currentStep.pivotCol">
             {{ cell | number:'1.0-4' }}
           </td>
 

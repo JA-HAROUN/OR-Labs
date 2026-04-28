@@ -1,4 +1,3 @@
-
 export interface SimplexRequest {
   objectiveType: string;       // 'Maximize' or 'Minimize'
   numVariables: number;
@@ -18,6 +17,11 @@ export interface SimplexStep {
   basicVariables: string[];
   pivotRow?: number;
   pivotCol?: number;
+  stage?: 'initial' | 'before' | 'after';
+  enteringVar?: string;
+  leavingVar?: string;
+  enteringReason?: string;
+  leavingReason?: string;
 }
 
 export interface SimplexResponse {
