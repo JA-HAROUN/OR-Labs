@@ -41,6 +41,7 @@ class Simplex_Solution(Enum):
     UNBOUNDED = 2
     UNFEASIBLE = 3
 
+
 class Simplex:
     
     def __init__(self, goal=Optimization_Type.NULL, obj_func_coeffs=(), constraints_vars_coeffs=(), RHS=(), operators=()):
@@ -81,28 +82,27 @@ class Simplex:
         self.solution = Simplex_Solution.NULL
         
         self.finished   = False
-        self.unbounded  = False
+        self.unbounded  = False   # True when ratio_test finds no positive pivot element
         
+        # Frontend API tracking
+        self.steps = []
+        self.iteration = 0
+        
+        # Main Terminal tracking
         self.iteration_history = {}
         self.last_tableau_data = {}
-        
-        
-        # TODO: Remove this later when you finish debugging
         self.console = Console()
 
     # Clears previous iteration snapshots before starting a new run.
-    # Used by: run_program.
     def reset_history(self):
         self.iteration_history = {}
 
     # Rebuilds the non-basic variable list from the current basis.
-    # Used by: record_history.
     def update_non_basic_variables(self):
         active_variables = self.variables[:len(self.obj_func_coeffs)]
         self.non_basic_vars = [var for var in active_variables if var not in self.basic_vars]
 
-    # Saves one tableau snapshot (coefficients, RHS, basis, output).
-    # Used by: run_program and run_simplex_iterations.
+    # Saves one tableau snapshot for Terminal (coefficients, RHS, basis, output).
     def record_history(self, leaving_var_row=None):
         self.update_non_basic_variables()
         iteration_number = len(self.iteration_history) + 1
@@ -116,7 +116,6 @@ class Simplex:
         }
     
     # Stores the final solver state for API/UI consumption.
-    # Used by: run_program.
     def save_result(self):
         self.last_tableau_data = {
             "solution_status": self.solution,
@@ -129,18 +128,14 @@ class Simplex:
             "non_basic_vars": self.non_basic_vars.copy(),
         }
 
-    # AI_GENERATED: This part is AI generated
     # Formats numbers for readable output tables.
-    # Used by: _build_tableau_table and print_iteration_history.
     def _fmt_value(self, value):
         value = float(value)
         if value.is_integer():
             return str(int(value))
         return f"{value:.4g}"
 
-    # AI_GENERATED: This part is AI generated
     # Builds one Rich table for a simplex tableau (optionally with z-row).
-    # Used by: print_iteration_history.
     def _build_tableau_table(self, col_names, basic_vars, coeffs, rhs, z_coeffs=None, z_val=None, title=None):
         table = Table(title=title, show_lines=False)
         table.add_column("BV", justify="center")
@@ -158,9 +153,7 @@ class Simplex:
 
         return table
 
-    # AI_GENERATED: This part is AI generated
     # Prints all saved tableau snapshots after solving.
-    # Used by: run_program.
     def print_iteration_history(self):
         self.console.rule("ITERATION HISTORY")
 
@@ -189,23 +182,59 @@ class Simplex:
             )
             self.console.print(table)
             self.console.print()
-        
-    
-    
-    # Behaviours
-    # *** Normal Simplex ***
-    """
-        Steps:
-            1. if pivot value != 1 divide the row with its value
-            2. u = element in different row / pivot
-            3. (the pivot row * -u ) + that different row from step 2
-            4. do step 2 and 3 for all constraints_vars_coeffs rows
-                NOTE: include the RHS in it
-            5. last thing do the same for the objective function
-    """
-        
+            
+    # Snapshots tableau state for the Frontend API
+    def _snapshot_tableau(self):
+        tableau = []
+        for i in range(self.num_of_constraints):
+            row = self.constraints_vars_coeffs[i].tolist()
+            row.append(float(self.RHS[i]))
+            tableau.append(row)
+        z_val = float(self.output[0]) if hasattr(self.output, "__len__") else float(self.output)
+        z_row = self.obj_func_coeffs.tolist()
+        z_row.append(z_val)
+        tableau.append(z_row)
+        return tableau
+
+    # Records the step data object expected by Angular API
+    def record_step(self, pivot_row=None, pivot_col=None, iteration=None, stage="after", entering_var=None, leaving_var=None, entering_reason=None, leaving_reason=None):
+        if iteration is None:
+            if stage == "after":
+                self.iteration += 1
+            iteration = self.iteration
+
+        self.steps.append({
+            "iteration": iteration,
+            "tableau": self._snapshot_tableau(),
+            "basicVariables": self.basic_vars + ["z"],
+            "pivotRow": pivot_row,
+            "pivotCol": pivot_col,
+            "stage": stage,
+            "enteringVar": entering_var,
+            "leavingVar": leaving_var,
+            "enteringReason": entering_reason,
+            "leavingReason": leaving_reason,
+        })
+
+    # Builds final response payload for Frontend API
+    def build_response(self):
+        headers = self.variables[:len(self.obj_func_coeffs)] + ["RHS"]
+        final_vars = {name: 0.0 for name in headers[:-1]}
+
+        for i, bv in enumerate(self.basic_vars):
+            if bv in final_vars:
+                final_vars[bv] = float(self.RHS[i])
+
+        z_val = float(self.output[0]) if hasattr(self.output, "__len__") else float(self.output)
+        return {
+            "status": self.solution.name if isinstance(self.solution, Simplex_Solution) else str(self.solution),
+            "optimalValue": z_val,
+            "finalVariables": final_vars,
+            "headers": headers,
+            "steps": self.steps,
+        }
+
     # Applies one pivot operation to constraints, RHS, and objective row.
-    # Used by: run_simplex_iterations.
     def pivoting(self, row_pivot, col_pivot):
         # Step 1
         pivot = self.constraints_vars_coeffs[row_pivot][col_pivot]
@@ -229,9 +258,7 @@ class Simplex:
           
         self.output = self.output - (self.RHS[row_pivot] * factor)
         
-    
     # Selects leaving row using the minimum positive ratio test.
-    # Used by: run_simplex_iterations.
     def ratio_test(self, column_index):
         row = -1
         min_ratio = float('inf')
@@ -248,22 +275,36 @@ class Simplex:
                 
                 elif current_ratio == min_ratio:
                     # We have a tie for the minimum ratio
-                    # In case of a tie, we can choose the row with the smallest index (leftmost)
+                    # In case of a tie, we choose the row with the smallest index (leftmost)
                     if row == -1 or i < row:
                         row = i
-                    
-
+                        
         return row
+
+    def ratio_test_details(self, column_index):
+        row = -1
+        min_ratio = float('inf')
+        degenerate = False
+        ratios = []
+
+        for i, rhs_value in enumerate(self.RHS):
+            divisor = self.constraints_vars_coeffs[i][column_index]
+
+            if divisor > 0:
+                current_ratio = rhs_value / divisor
+                ratios.append((i, current_ratio))
+
+                if current_ratio < min_ratio:
+                    min_ratio = current_ratio
+                    row = i
+                    degenerate = False
+                elif current_ratio == min_ratio:
+                    degenerate = True
+
+        return row, min_ratio, degenerate, ratios
     
     # Checks if all reduced costs satisfy optimality for current goal.
-    # Used by: run_simplex_iterations and check_failure.
     def goal_achieved(self):
-        # Return True or False based on achieved or not
-        # if Maximization:
-        #   Check if all obj_func_coeffs are non-negative
-        # else:
-        #   Check if all obj_func_coeffs are non_positive
-        #
         # In phase 2, artificial columns are skipped
         # a leftover positive coefficient there does not mean the solution is not optimal.
         indices = self.real_indices()
@@ -274,10 +315,8 @@ class Simplex:
             return all(self.obj_func_coeffs[j] <= 0 for j in indices)
 
         return True
-
     
     # Returns columns allowed to enter the basis.
-    # Used by: goal_achieved and choose_entering_var.
     def real_indices(self):
         if self.phase_one_flag:
             return list(range(len(self.obj_func_coeffs)))
@@ -285,13 +324,7 @@ class Simplex:
                 if not name.startswith("a_")]
 
     # Picks entering variable index (most negative for max, most positive for min).
-    # Used by: run_simplex_iterations.
     def choose_entering_var(self):
-        # Maximization -> Most Negative
-        # Minimization -> Most Positive
-        # NOTE: if there are equal values take the left most (best practice)
-        # NOTE: artificial columns are never entered in phase 2
-
         entering_var_index = -1
         indices = self.real_indices()
 
@@ -320,7 +353,6 @@ class Simplex:
         return entering_var_index
 
     # Adds one auxiliary column and updates metadata/basis when needed.
-    # Used by: add_variables.
     def add_auxiliary_variable(self, row_index, var_type):
         if var_type == Var_Type.SLACK:
             self.slacks_num += 1
@@ -351,7 +383,6 @@ class Simplex:
         self.constraints_vars_coeffs = np.hstack((self.constraints_vars_coeffs, new_column))
     
     # Expands all constraints with slack/surplus/artificial variables.
-    # Used by: run_program.
     def add_variables(self):
         for i, _ in enumerate(self.constraints_vars_coeffs) :
             operator = self.operators[i]
@@ -368,7 +399,6 @@ class Simplex:
                 raise ValueError(f"Unsupported operator: {operator}")
 
     # Eliminates basic-variable coefficients from the objective row.
-    # Used by: run_phase_one.
     def canonicalize_objective(self):
         for i, basic_var in enumerate(self.basic_vars):
             if basic_var not in self.variables[:len(self.obj_func_coeffs)]:
@@ -388,7 +418,6 @@ class Simplex:
             self.output = self.output - factor * self.RHS[i]
 
     # Main simplex loop for one phase: enter, leave, pivot, record.
-    # Used by: run_phase_one and run_phase_two.
     def run_simplex_iterations(self, phase_label):
         iteration = 0
         while (not self.goal_achieved()):
@@ -398,9 +427,12 @@ class Simplex:
             if self.finished:
                 break
 
-            # capture names before swapping
             entering_var_name = self.variables[entering_var_index]
-            leaving_var_row = self.ratio_test(entering_var_index)
+            entering_value = self.obj_func_coeffs[entering_var_index]
+            entering_reason = f"Most positive reduced cost ({entering_value:.4g})" if self.goal == Optimization_Type.MINIMIZATION else f"Most negative reduced cost ({entering_value:.4g})"
+
+            leaving_var_row, min_ratio, degenerate, ratios = self.ratio_test_details(entering_var_index)
+            leaving_var_name = self.basic_vars[leaving_var_row] if leaving_var_row != -1 else ""
 
             # if ratio_test found no positive element -> unbounded
             if leaving_var_row == -1:
@@ -408,41 +440,38 @@ class Simplex:
                 self.record_history(leaving_var_row)
                 break
 
-            leaving_var_name = self.basic_vars[leaving_var_row]
+            ratio_parts = [f"R{i + 1}: {r:.4g}" for i, r in ratios]
+            ratio_text = ", ".join(ratio_parts) if ratio_parts else "No positive ratios"
+            leaving_reason = f"Minimum ratio test → {ratio_text}; min = {min_ratio:.4g}"
+            if degenerate:
+                leaving_reason += " (tie/degenerate)"
+
+            self.record_step(
+                pivot_row=leaving_var_row,
+                pivot_col=entering_var_index,
+                stage="before",
+                entering_var=entering_var_name,
+                leaving_var=leaving_var_name,
+                entering_reason=entering_reason,
+                leaving_reason=leaving_reason,
+            )
 
             # swap entering with leaving
             self.basic_vars[leaving_var_row] = entering_var_name
 
             self.pivoting(leaving_var_row, entering_var_index)
+            self.record_step(stage="after")
 
             # Check for degeneracy
             self.check_degeneracy()
 
             self.record_history(leaving_var_row)
             
+            print(f"  ▶  {phase_label} | Iteration {iteration}")
+            print(f"     Entering : {entering_var_name}   →   Leaving : {leaving_var_name}")
 
-    # *** Two Phase ***
-    """
-        Sequence:
-            1. Add auxiliary variables for constraints:
-                - <= : slack
-                - >= : surplus + artificial
-                -  = : artificial
-            2. Phase 1 objective:
-                Minimize W = sum(a_i)
-            3. Phase 1 decision:
-                - W = 0  -> feasible, continue to phase 2
-                - W > 0  -> unfeasible
-            4. Phase 2:
-                Restore the original objective and continue simplex.
-                Artificial variables never enter the basis in phase 2.
-    """
-
-    
     # Phase 1: build and solve auxiliary objective to test feasibility.
-    # Used by: run_program when artificial variables exist.
     def run_phase_one(self):
-
         self.phase_one_flag = True
 
         old_objective_coeffs = self.obj_func_coeffs.copy()
@@ -457,6 +486,11 @@ class Simplex:
         self.goal = new_goal
 
         self.canonicalize_objective()
+        self.record_step(stage="initial")
+
+        print("\n" + "═" * 60)
+        print("  PHASE 1  —  Minimize artificial variables  (W → 0)")
+        print("═" * 60)
 
         # Run the simplex algorithm for phase one
         self.run_simplex_iterations("Phase 1")
@@ -473,32 +507,36 @@ class Simplex:
 
         # Re-canonicalize: the restored objective may have non-zero
         # coefficients for variables that are now basic after phase 1.
-        # Eliminate them with standard row operations.
         self.canonicalize_objective()
         
     # Phase 2: optimize original objective using the feasible basis.
-    # Used by: run_program.
     def run_phase_two(self):
-        # NOTE: in phase two we just ignore the artificial variables and never let them enter the basis again
-
+        print("\n" + "═" * 60)
+        print("  PHASE 2  —  Optimize original objective")
+        print("═" * 60)
+        self.record_step(stage="initial")
+        
         self.run_simplex_iterations("Phase 2")
             
         # Check the result of phase two
         self.check_failure()
         
-    
     # Orchestrates full solve flow: setup, phase 1/2, history, final result.
-    # Used by: callers (tests/API endpoints).
     def run_program(self):
         self.obj_func_coeffs = -self.obj_func_coeffs
         self.reset_history()
 
         self.add_variables()
+        self.record_step(iteration=0, stage="initial")
         self.record_history()
+
+        print("\n" + "═" * 60)
+        print("  INITIAL TABLEAU  —  After adding auxiliary variables")
+        print("═" * 60)
 
         # Check phase 1 if there are artificial variables
         if self.artificial_num >= 1:
-            result = self.run_phase_one()
+            self.run_phase_one()
             if (self.solution == Simplex_Solution.UNFEASIBLE):
                 self.print_iteration_history()
                 return
@@ -511,7 +549,6 @@ class Simplex:
         self.save_result()
     
     # Sets final status (unfeasible, unbounded, or optimal).
-    # Used by: run_phase_one and run_phase_two.
     def check_failure(self):
         # Phase 1 is infeasible if a basic artificial variable stays positive.
         if self.phase_one_flag:
@@ -533,18 +570,14 @@ class Simplex:
             self.solution = Simplex_Solution.OPTIMAL
         
     # Counts degenerate pivots (when any basic RHS becomes zero).
-    # Used by: run_simplex_iterations.
     def check_degeneracy(self):
         # A solution is degenerate if at least one basic variable is zero.
         self.degenerate_count += 1
         return np.any(self.RHS == 0)
 
-    pass
-
 
 if __name__ == "__main__":
 
-    # AI_GENERATED: This part is AI generated
     def run_case(title, expected, **kwargs):
         """Helper: run one simplex test then print actual vs expected summary."""
         print("\n" + "█" * 60)
@@ -579,13 +612,7 @@ if __name__ == "__main__":
         )
         print(f"  Expected : {expected}")
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 1: Maximization, all ≤ (Hamdy Taha classic) ────────────────────
-    # max  z = 3x₁ + 2x₂
-    # s.t.  x₁ +  x₂ ≤ 4
-    #       2x₁ + x₂ ≤ 6
-    #       x₁       ≤ 3
-    # Expected optimal: z = 10  (x₁=2, x₂=2)  — no degeneracy
     run_case(
         "Maximization — all ≤  (3×2, Hamdy Taha)",
         expected="status=OPTIMAL, z=10, x_1=2, x_2=2",
@@ -596,13 +623,7 @@ if __name__ == "__main__":
         operators=["<=", "<=", "<="],
     )
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 2: Maximization, 3 variables, all ≤ ────────────────────────────
-    # max  z = 5x₁ + 4x₂ + 3x₃
-    # s.t.  6x₁ + 4x₂ + 2x₃ ≤ 240
-    #       3x₁ + 2x₂ + 5x₃ ≤ 270
-    #       5x₁ + 6x₂ + 5x₃ ≤ 420
-    # Expected optimal: z = 273.75
     run_case(
         "Maximization — all ≤  (3 variables)",
         expected="status=OPTIMAL, z=273.75",
@@ -617,15 +638,7 @@ if __name__ == "__main__":
         operators=["<=", "<=", "<="],
     )
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 3: Minimization, all ≤ ─────────────────────────────────────────
-    # min  z = 2x₁ + 3x₂
-    # s.t.  x₁ + 2x₂ ≤ 6
-    #       2x₁ +  x₂ ≤ 8
-    # Expected optimal: z = 0  (trivial, origin is feasible for minimization)
-    # (demonstrates that simplex correctly detects the origin as optimal
-    #  when all original variable coefficients in z are non-negative
-    #  and the constraints are ≤ type)
     run_case(
         "Minimization — all ≤  (origin is optimal)",
         expected="status=OPTIMAL, z=0, x_1=0, x_2=0",
@@ -636,12 +649,7 @@ if __name__ == "__main__":
         operators=["<=", "<="],
     )
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 4: Degenerate — tie in ratio test ───────────────────────────────
-    # max  z = 3x₁ + 9x₂
-    # s.t.   x₁ + 4x₂ ≤ 8     ← both rows give ratio = 2, causing degeneracy
-    #        x₁ + 2x₂ ≤ 4
-    # Expected: OPTIMAL  z = 18  (x₁=0, x₂=2)
     run_case(
         "Maximization — degenerate tie in ratio test",
         expected="status=OPTIMAL, z=18, x_1=0, x_2=2",
@@ -652,14 +660,7 @@ if __name__ == "__main__":
         operators=["<=", "<="],
     )
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 5: UNBOUNDED maximization ───────────────────────────────────────
-    # max  z = x₁ + x₂
-    # s.t.  -x₁ + x₂ ≤ 1          ← no upper bound on x₁ direction
-    #        x₁       ≤  ∞  (missing)
-    # The column of x₁ has only non-positive constraint coefficients,
-    # so ratio_test returns -1 → problem is unbounded.
-    # Expected: UNBOUNDED
     run_case(
         "Maximization — unbounded (no upper bound on x₁)",
         expected="status=UNBOUNDED",
@@ -670,13 +671,7 @@ if __name__ == "__main__":
         operators=["<="],
     )
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 6: Optimal with fractional solution ─────────────────────────────
-    # max  z = 5x₁ + 4x₂
-    # s.t.  6x₁ +  4x₂ ≤ 24
-    #        x₁ +  2x₂ ≤  6
-    # Expected: OPTIMAL  z = 21  (x₁=3, x₂=3/2)
-    #   Verify: 5(3) + 4(1.5) = 15 + 6 = 21  ✓
     run_case(
         "Maximization — fractional optimal solution",
         expected="status=OPTIMAL, z=21, x_1=3, x_2=1.5",
@@ -687,14 +682,7 @@ if __name__ == "__main__":
         operators=["<=", "<="],
     )
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 7: Minimization — non-trivial (requires actual pivoting) ─────────
-    # min  z = -x₁ - 2x₂            ← negating forces algorithm to pivot
-    # s.t.  x₁ + x₂ ≤ 4
-    #       x₁      ≤ 3
-    # After negation in run_program: internal coeffs become [1, 2, ...]
-    # The minimization loop picks the most-positive coefficient and pivots.
-    # Expected: OPTIMAL  z = -7  (x₁=1, x₂=3)
     run_case(
         "Minimization — non-trivial (requires pivoting)",
         expected="status=OPTIMAL, z=-8, x_1=0, x_2=4",
@@ -705,11 +693,7 @@ if __name__ == "__main__":
         operators=["<=", "<="],
     )
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 8: Single variable sanity check ─────────────────────────────────
-    # max  z = 7x₁
-    # s.t.  x₁ ≤ 5
-    # Expected: OPTIMAL  z = 35  (x₁=5)
     run_case(
         "Maximization — single variable sanity check",
         expected="status=OPTIMAL, z=35, x_1=5",
@@ -720,13 +704,7 @@ if __name__ == "__main__":
         operators=["<="],
     )
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 9: Mixed constraints (requires phase 1 due to >=) ─────────────
-    # max z = x1 + x2
-    # s.t. x1 + x2 >= 2
-    #      x1 <= 3
-    #      x2 <= 3
-    # Expected: OPTIMAL z = 6 at (3, 3)
     run_case(
         "Maximization — mixed (>= and <=)",
         expected="status=OPTIMAL, z=6, x_1=3, x_2=3",
@@ -737,13 +715,7 @@ if __name__ == "__main__":
         operators=[">=", "<=", "<="],
     )
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 10: Equality constraint (phase 1) ──────────────────────────────
-    # max z = 2x1 + x2
-    # s.t. x1 + x2 = 4
-    #      x1 <= 3
-    #      x2 <= 3
-    # Expected: OPTIMAL z = 7 at (3, 1)
     run_case(
         "Maximization — equality constraint",
         expected="status=OPTIMAL, z=7, x_1=3, x_2=1",
@@ -754,12 +726,7 @@ if __name__ == "__main__":
         operators=["=", "<=", "<="],
     )
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 11: Infeasible system ───────────────────────────────────────────
-    # max z = x1
-    # s.t. x1 >= 3
-    #      x1 <= 1
-    # Expected: UNFEASIBLE
     run_case(
         "Maximization — infeasible constraints",
         expected="status=UNFEASIBLE",
@@ -770,13 +737,7 @@ if __name__ == "__main__":
         operators=[">=", "<="],
     )
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 12: Redundant constraint present ────────────────────────────────
-    # max z = 3x1 + 2x2
-    # s.t. x1 + x2 <= 4
-    #      2x1 + 2x2 <= 8   (redundant)
-    #      x1 <= 3
-    # Expected: OPTIMAL z = 10 at (2, 2)
     run_case(
         "Maximization — redundant constraint",
         expected="status=OPTIMAL, z=11, x_1=3, x_2=1",
@@ -787,13 +748,7 @@ if __name__ == "__main__":
         operators=["<=", "<=", "<="],
     )
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 13: Multiple optimal solutions ──────────────────────────────────
-    # max z = x1 + x2
-    # s.t. x1 + x2 <= 4
-    #      x1 <= 4
-    #      x2 <= 4
-    # Expected: OPTIMAL z = 4, with infinitely many optima on x1+x2=4
     run_case(
         "Maximization — multiple optimum points",
         expected="status=OPTIMAL, z=4 (one of many optimal corner points)",
@@ -804,12 +759,7 @@ if __name__ == "__main__":
         operators=["<=", "<=", "<="],
     )
 
-    # AI_GENERATED: This part is AI generated
     # ── Case 14: Minimization with >= and = (phase 1 + phase 2) ─────────────
-    # min z = x1 + x2
-    # s.t. x1 + x2 >= 5
-    #      x1 + 2x2 = 8
-    # Optimal point is (2,3), z = 5
     run_case(
         "Minimization — mixed >= and =",
         expected="status=OPTIMAL, z=5, x_1=2, x_2=3",
