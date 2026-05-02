@@ -1,5 +1,5 @@
 import { Component } from '@angular/core';
-import { MatrixGenerator } from '../components/matrix-generator/matrix-generator';
+import { MatrixGenerator } from "../matrix-generator/matrix-generator";
 
 @Component({
   selector: 'app-game-page',

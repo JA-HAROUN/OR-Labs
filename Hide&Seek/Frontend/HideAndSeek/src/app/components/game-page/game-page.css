@@ -1,0 +1,91 @@
+/* ── Game Page (score bar + board wrapper) ──────── */
+
+#game-page {
+    background-color: var(--bg-page);
+    min-height: 100vh;
+}
+
+/* ── Header / Score Bar ── */
+#game-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1em 2em;
+    background-color: var(--brown);
+    border-bottom: 3px solid var(--tan);
+}
+
+#game-header h1 {
+    color: var(--text-on-dark);
+    font-size: 1.3em;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+}
+
+/* Score cluster */
+#scores {
+    display: flex;
+    gap: 1.25em;
+    align-items: center;
+}
+
+.score {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: var(--navy);
+    border: 2px solid var(--tan);
+    border-radius: 4px;
+    padding: 0.4em 1.1em;
+    min-width: 110px;
+}
+
+.score-label {
+    font-size: 0.75em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--tan);
+    margin-bottom: 0.15em;
+}
+
+/* h2 inside score-label */
+.score-label h2 {
+    font-size: inherit;
+    font-weight: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    margin: 0;
+}
+
+.score-value {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: #fff;
+}
+
+.score-value p {
+    margin: 0;
+}
+
+/* ── Game Controls ── */
+#game-controls button {
+    background-color: var(--tan);
+    color: var(--navy);
+    border-color: var(--tan);
+    font-weight: 600;
+}
+
+#game-controls button:hover {
+    background-color: var(--olive);
+    border-color: var(--olive);
+    color: #fff;
+}
+
+/* ── Board area ── */
+#game-matrix {
+    display: flex;
+    justify-content: center;
+    padding: 2.5em 1.5em;
+}

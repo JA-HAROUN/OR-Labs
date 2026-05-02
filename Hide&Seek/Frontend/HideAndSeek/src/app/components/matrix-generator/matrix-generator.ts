@@ -1,7 +1,7 @@
 import { Component, OnDestroy } from '@angular/core';
 import { Box } from '../box/box';
-import { MapSizeService } from '../services/map-size.service';
-import { MapSize } from '../models/map-size';
+import { GameData } from '../../services/game-data';
+import { MapSize } from '../../models/map-size';
 import { Subscription } from 'rxjs';
 
 @Component({
@@ -15,9 +15,9 @@ export class MatrixGenerator implements OnDestroy {
   matrix: Box[][] = [];
   private sub: Subscription | null = null;
 
-  constructor(private mapSize: MapSizeService) {
+  constructor(private gameData: GameData) {
     this.matrix = [];
-    this.sub = this.mapSize.getSize().subscribe((s: MapSize) => {
+    this.sub = this.gameData.getSize().subscribe((s: MapSize) => {
       if (s.rows > 0 && s.columns > 0) {
         this.generateMatrix(s.rows, s.columns);
       }

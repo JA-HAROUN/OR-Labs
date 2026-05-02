@@ -1,13 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 
-import { GetMapSize } from './get-map-size';
+import { GameData } from './game-data';
 
-describe('GetMapSize', () => {
-  let service: GetMapSize;
+describe('GameData', () => {
+  let service: GameData;
 
   beforeEach(() => {
     TestBed.configureTestingModule({});
-    service = TestBed.inject(GetMapSize);
+    service = TestBed.inject(GameData);
   });
 
   it('should be created', () => {
