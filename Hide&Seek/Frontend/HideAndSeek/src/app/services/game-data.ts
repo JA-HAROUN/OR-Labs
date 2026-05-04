@@ -69,6 +69,14 @@ export class GameData {
     return this.matrix$.value;
   }
 
+  // Reset all game state to initial defaults
+  clear() {
+    this.size$.next({ rows: 0, columns: 0 });
+    this.role$.next(null);
+    this.scores$.next({ hider: 0, seeker: 0 });
+    this.matrix$.next([]);
+  }
+
   // Helpers
   private generateEmptyMatrix(rows: number, columns: number) {
     const matrix: GameBox[][] = [];
